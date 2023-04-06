@@ -10,6 +10,7 @@ add_executable(timer01      timer01.cpp)
 add_executable(timer02      timer02.cpp)
 add_executable(timer03      timer03.cpp)
 
-include_directories(../../asio/asio/include)
-include_directories(../../bind/include)
-include_directories(../../config/include)
+include_directories(../../extern/asio/asio/include)
+include_directories(../../extern/boost_1_81_0)
+
+add_definitions(-DASIO_HAS_BOOST_BIND)

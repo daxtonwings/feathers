@@ -17,9 +17,10 @@ void print(const asio::error_code &,
 int main() {
   asio::io_context io;
 
-  asio::steady_timer t(io, asio::chrono::seconds(5));
+  asio::steady_timer t(io, asio::chrono::seconds(1));
 //  t.wait();
 //  std::cout << "Hello, world!" << std::endl;
+  int count=0;
   t.async_wait(boost::bind(print,
                            asio::placeholders::error, &t, &count));
   std::cout << "before io.run" << std::endl;
