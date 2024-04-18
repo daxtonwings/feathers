@@ -23,11 +23,11 @@ email: xingdongxu2020@gmail.com
 description: >- # this means to ignore newlines until "baseurl:"
   Let each coding character be full of magic. Main coding theme are: 
   python, c++, asynchronous
-domain: jeanpaulwings.github.io
+domain: daxtonwings.github.io
 baseurl: "/feathers" # the subpath of your site, e.g. /blog
-url: "https://jeanpaulwings.github.io" # the base hostname & protocol for your site, e.g. http://example.com
+url: "https://daxtonwings.github.io" # the base hostname & protocol for your site, e.g. http://example.com
 #twitter_username: jekyllrb
-github_username:  jeanpaulwings
+github_username:  daxtonwings
 
 # Build settings
 theme: minima
