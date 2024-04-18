@@ -1,3 +1,0 @@
-[submodule "extern/asio"]
-	path = extern/asio
-	url = git@github.com:chriskohlhoff/asio.git
