@@ -8,6 +8,19 @@ title: "异步：从并发到Python协程"
     * [如何并发](#如何并发)
         * [进程、线程、协程](#进程线程协程)
         * [函数调用栈](#函数调用栈)
+* **[协程](#协程)**
+* **[Python协程](#python协程)**
+  * [简单生成器](#第一版简单生成器)
+  * [增强版生成器](#第二版增强版生成器)
+    * [动机与改进思路](#动机与改进思路)
+    * [语法变化](#语法变化)
+    * [完善资源管理与异常控制](#完善资源管理与异常控制)
+    * [yield语句：逆向函数](#yield语句逆向函数)
+  * [代理生成器](#第三版代理生成器)
+    * [动机与改进思路](#动机与改进思路-1)
+    * [yield from语句概要](#yield-from语句概要)
+    * [yield from实现细节](#yield-from实现细节)
+    * [语法糖与优化](#语法糖与优化)
 
 ## 从计算机原理开始
 
@@ -106,27 +119,268 @@ python中的协程指由async语法定义的函数，由内置asyncio模块依�
 因此多协程实现的是协作式的并发。与之相对，多进程、多线程是抢占式并发。
 
 
-## 异步与协程
+## Python协程
 
-I/O阻塞对异步的需求
-独立计算的并行需求
+### 第一版：简单生成器
 
-协程，应用代码交换执行片段
+> [PEP 255-SimpleGenerators](https://peps.python.org/pep-0255/)
+> 关键字yield (2001-05-18)
 
-## yield与Generator
+第一代生成器(generator)功能简单，下面以Gen1表示第一代生成器。
+含有关键字`yield`语句的python函数是生成器。
+与普通函数的区别在于，Gen1可以在`yield`语句处暂停与恢复执行。
 
-Python的Generator语法
+
 ```python
 def g():
     i = 1
     yield i
     i += 1
 
-a = g()  # a is a generator
-next(a)  # out 1
-next(a)  # raise StopIteration
+a = g()  # a is an Iterator
+a.__next__()  # next(a)
+a.__next__()  # next(a)
 ```
 
-- `a=g()`为协程内变量准备储存空间
+- `a=g()`为生成器内变量准备储存空间, a是一个迭代器
 - `yield`表示函数主动让出执行条件，保存当前状态
-- `next(a)`: 第一次为进入协程，第二次为继续运行
+- `a.__next__()`: 
+  - 第一次执行时进入协程运行至`yield i`返回。
+  - 第二次执行时从`yield i`下一条语句继续执行，运行至函数结束
+- 当生成器运行至结束/`return`语句时, 产生`StopIteration`异常表示到达迭代器结尾
+
+
+### 第二版：增强版生成器
+
+> [PEP 342 – Coroutines via Enhanced Generators](https://peps.python.org/pep-0342/)
+> 改进yield语句功能 (2005-05-10)
+
+#### 动机与改进思路
+
+第一代生成器Gen1的函数过程允许的暂停与恢复，几乎符合协程的定义。
+不过通用python函数相比，Gen1有以下不足：
+
+1. Gen1恢复执行时，不能更新状态。
+协程暂停时通常是为了等待某个异步事件的更新，以函数调用类比，函数P调用函数Q后可以从Q中获取返回值信息。
+Gen1初始化后无法从外部获取信息，只能按照唯一特定的逻辑执行。
+ 
+2. Gen1恢复执行时，不能传入异常。
+与第一点类似，Python的函数调用可能会产生异常，调用者要妥善处理异常或者继续传递异常。
+Gen1无法更新外部信息，也无法获知异常情况
+
+3. Gen1的`yield`语句不能位于try/finally块的try部分。
+
+在PEP 342中，改进的第二版generator（下面以Gen2表示）主要特性变化包括：
+更改了`yield`语句, 新增类型方法`send()`/`throw()`/`close()`, 完善资源管理以符合异常处理需要。
+
+#### 语法变化
+
+从语法上`yield`语句由声明语句改为表达式语句。`yield`改为表达式语句意味着Gen2能够在恢复运行时更新数据。
+
+新增类型方法`send(value=None)`，
+`gen2.send()`用于开始/恢复生成器执行，可替代原来的迭代器语句`gen2.__next__()`并具有更新数据功能。
+`gen2.send()`函数的返回值与`gen2.__next__()`相同，为`yield`关键字后面的表达式的值。
+返回异常时，当运行至结尾时引发`StopIteration`，或者generator运行中引发的其它异常。
+若调用时generator已经结束，`send()`方法会收到异常
+
+新增类型方法`throw(type,value=None,tb=None)`
+`gen2.throw()`用于向生成器传递类型为`type`的异常信息，
+等效于在`yield`语句引起异常`raise type, value, tb`。
+`throw()`方法的返回值与`send()`类似，可能返回后续`yield`后面的表达式值，也可能收到异常。
+若调用时generator已结束，`throw()`直接收到其传入的异常类型。
+
+新增类型方法`close()`及新异常类型`GeneratorExit`。
+`gen2.close()`等效于向Gen2传递`GeneratorExit`异常。
+由调用者向生成器传入时控制生成器中止，
+由生成器向外传播时与`StopIteration`相似表示生成器结束。
+
+
+#### 完善资源管理与异常控制
+
+Gen2的`yield`语句可以位于try/finally语法块的try部分。
+为此，当Gen2被触发垃圾回收时，`gen2.__del__()`将检查并确保`gen2.close()`被调用。
+`close()`实现类型如下逻辑代码
+
+```python
+def close(self):
+    try:
+        self.throw(GeneratorExit)
+    except (GeneratorExit, StopIteration):
+        pass
+    else:
+        raise RuntimeError("generator ignored GeneratorExit")
+```
+
+如果`close()`动作在Gen2中没有妥善处理， 既未抛出`GeneratorExit`/`StopIteration`时，
+垃圾回收逻辑向std.err输出异常错误信息后忽略该异常情况。
+
+#### yield语句：逆向函数
+
+Gen2的`yield`语句可以看作是一种逆向函数调用，
+函数的输入是`yield`右侧表达式的数值, 函数的返回值是`yield`语句的返回值。
+这个逆向函数的具体功能实现是由调用者两次`send()`之间的逻辑实现的。
+
+
+### 第三版：代理生成器
+
+> [PEP 380 - Syntax for Delegating to a Subgenerator](https://peps.python.org/pep-0380/)
+> yield from语句(2009-02-13)
+
+#### 动机与改进思路
+
+增强版生成器Gen2，从功能逻辑角度是正确完备的。
+从开发使用角度，Gen2的表达能力不足，在复杂的场景下，仅使用Gen2实现处理逻辑代码十分复杂。
+
+协程的关键能力是暂停与恢复，当程序执行到阻塞操作时主动暂停执行让出操作控制权，
+随后等待阻塞操作完成时被唤醒恢复。
+考虑一个协程函数，要依次进行文件读取、Http请求两种阻塞操作。
+其中文件读写、Http请求已有封装好的协程。
+
+使用generator实现该协程函数，意味着主函数gen_m要依次运行文件读取协程gen_file与Http请求协程gen_http。
+当gen_file进行文件读取时，整个协程gen_m+gen_file暂停，读取完毕后恢复运行。
+当gen_http发出请求等待响应时，z整个协程gen_m+gen_http暂停，随后在恢复运行。 
+若使用Gen2实现，代码片段如下。这里的代码片段只实现了主体逻辑，分支情况未完整实现。
+
+```python
+def gen_file():
+    # wait for file reading
+    file_value = yield None
+    # do something
+    res = foo(file_value)
+    raise StopIteration(res)
+
+def gen_http():
+    http_request = ...
+    # wait for response
+    resp = yield http_request
+    return resp
+
+def gen_m():
+    _file_coroutine = gen_file()
+    file_pause_flag = _file_coroutine.send()
+    file_value = yield file_pause_flag
+    try:
+        _file_coroutine.send(file_value)
+    except StopIteration as e:
+        res = e.args[0]
+    else:
+        raise RuntimeError
+    
+    _http_coroutine = gen_http()
+    http_request = _http_coroutine.send()
+    resp = yield http_request
+    try:
+        _http_coroutine.send(resp)
+    except StopIteration as e:
+        res = e.args[0]
+    else:
+        raise RuntimeError
+```
+
+上述过程中当gen_file暂停意味着gen_m一起暂停，表现为gen_m收到gen_file的yield数据时，立即向上yield。
+随后文件读取完成时，gen_m收到了外层的恢复数据后再向内部的gen_file转发。 
+可以看出gen_m在gen_file暂停与恢复时，只是一个转发的角色，却每次都要实现一遍类型的代码。
+为了改进generator在这种层级调用场景下的表达能力。第三代generator增加了`yield from`表达式语法。
+
+
+#### yield from语句概要
+
+包含`yield from`语句的函数是生成器。
+语句`yield from <expr>`要求`expr`是迭代器。
+在生成器运行期间，`expr`迭代器直接与生成器的调用者交互，
+含有`yield from`的生成器发挥代理作用。
+进一步，generator初始化后就是迭代器，可以作为`yield from`语句的迭代对象。
+下面将`yield from`所在的生成器称为GenD（delegating generator，代理生成器），
+将`<expr>`部分的生成器称为GenS（subgenerator，子生成器）。
+
+那么， 当有值从GenS生成(yield)时，GenD直接将该值yield给GenD的调用者，
+`yield from`表达式不发生求值处理。
+随后，当GenD的调用者调用`send()`/`throw()`方法时，GenD将相关参数转发给GenS。
+最后，当GenS运行至返回时，`return`语句返回值是`yield from`表达式的结果。
+
+在Gen2中，我们将`yield`语句看作是以生成值为输入，以`send()`为返回的逆向函数。
+上层调用者是该逆向函数的函数结构体。
+在Gen3中，具有`yield from`语句的生成器是这个函数结构体的中间部分，
+实现了函数层级封装与调用的效果。
+
+#### yield from实现细节
+
+从`expr`迭代器yield的数值直接传递给GenD的调用者
+
+调用`genD.send(value)`时, 
+若value为None，则调用迭代器的`__next__()`方法，反之调用迭代器的`send()`方法。
+若迭代器抛出`StopIteration`时，GenD恢复运行，对`yield from`语句求值，
+若迭代器抛出其它异常时，在GenD的`yield from`语句中引起该异常。
+
+调用`genD.throw()`当传递的不是`GeneratorExit`异常，则直接调用迭代器的`throw()`方法。
+若迭代器抛出`StopIteration`时，GenD恢复运行，对`yield from`语句求值，
+若迭代器抛出其它异常时，在GenD的`yield from`语句中引起该异常。
+
+调用`genD.throw()`传递`GeneratorExit`，或者调用`genD.close()`时，
+将尝试调用迭代器的`close()`方法。
+随后，若迭代器抛出异常，则在`yield from`语句处引发该异常；
+若迭代器未抛出异常，则在`yield from`语句处引发`GeneratorExit`异常。
+
+`yield from`语句求值的结果，是迭代器结束运行时抛出的`StopIteration`的首个参数。
+
+生成器返回时，返回语句`return <expr>`将引发`StopIteration(expr)`格式异常。 
+
+#### 语法糖与优化
+
+`yield from`的语句`RESULT = yield from EXPR`，等效于下面代码实现。
+从这个角度看，`yield from`就是层级调用generator的某种语法糖。
+但是，python对`yield from`实现也不只是简单的语法糖替换，
+通过对内部generator的缓存管理，能够压缩`send()`与`yield`语句的传递路径，优化代码效率。
+
+```python
+# RESULT = yield from EXPR
+_i = iter(EXPR)
+try:
+    _y = next(_i)
+except StopIteration as _e:
+    _r = _e.value
+else:
+    while 1:
+        try:
+            _s = yield _y
+        except GeneratorExit as _e:
+            try:
+                _m = _i.close
+            except AttributeError:
+                pass
+            else:
+                _m()
+            raise _e
+        except BaseException as _e:
+            _x = sys.exc_info()
+            try:
+                _m = _i.throw
+            except AttributeError:
+                raise _e
+            else:
+                try:
+                    _y = _m(*_x)
+                except StopIteration as _e:
+                    _r = _e.value
+                    break
+        else:
+            try:
+                if _s is None:
+                    _y = next(_i)
+                else:
+                    _y = _i.send(_s)
+            except StopIteration as _e:
+                _r = _e.value
+                break
+RESULT = _r
+
+# StopIteration
+class StopIteration(Exception):
+    def __init__(self, *args):
+        if len(args) > 0:
+            self.value = args[0]
+        else:
+            self.value = None
+        Exception.__init__(self, *args)
+```
+
