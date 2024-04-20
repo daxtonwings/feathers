@@ -9,18 +9,24 @@ title: "异步：从并发到Python协程"
         * [进程、线程、协程](#进程线程协程)
         * [函数调用栈](#函数调用栈)
 * **[协程](#协程)**
-* **[Python协程](#python协程)**
-  * [简单生成器](#第一版简单生成器)
-  * [增强版生成器](#第二版增强版生成器)
+* **[Python协程](#python协程的进化)**
+  * [PEP 255：简单生成器](#pep-255简单生成器)
+  * [PEP 342：增强版生成器](#pep-342增强版生成器)
     * [动机与改进思路](#动机与改进思路)
     * [语法变化](#语法变化)
     * [完善资源管理与异常控制](#完善资源管理与异常控制)
     * [yield语句：逆向函数](#yield语句逆向函数)
-  * [代理生成器](#第三版代理生成器)
+  * [PEP 380：PEP代理生成器](#pep-380代理生成器)
     * [动机与改进思路](#动机与改进思路-1)
     * [yield from语句概要](#yield-from语句概要)
     * [yield from实现细节](#yield-from实现细节)
     * [语法糖与优化](#语法糖与优化)
+  * [PEP 492：Python协程](#pep-492python协程)
+    * [历史背景与Python协程的诞生](#历史背景与python协程的诞生)
+    * [站在开发使用角度的动机](#站在开发使用角度的动机)
+    * [协程定义](#协程定义)
+    * [await 表达式](#await表达式)
+    * [async with/async for](#async-withasync-for)
 
 ## 从计算机原理开始
 
@@ -119,9 +125,9 @@ python中的协程指由async语法定义的函数，由内置asyncio模块依�
 因此多协程实现的是协作式的并发。与之相对，多进程、多线程是抢占式并发。
 
 
-## Python协程
+## Python协程的进化
 
-### 第一版：简单生成器
+### PEP 255：简单生成器
 
 > [PEP 255-SimpleGenerators](https://peps.python.org/pep-0255/)
 > 关键字yield (2001-05-18)
@@ -150,7 +156,7 @@ a.__next__()  # next(a)
 - 当生成器运行至结束/`return`语句时, 产生`StopIteration`异常表示到达迭代器结尾
 
 
-### 第二版：增强版生成器
+### PEP 342：增强版生成器
 
 > [PEP 342 – Coroutines via Enhanced Generators](https://peps.python.org/pep-0342/)
 > 改进yield语句功能 (2005-05-10)
@@ -221,7 +227,7 @@ Gen2的`yield`语句可以看作是一种逆向函数调用，
 这个逆向函数的具体功能实现是由调用者两次`send()`之间的逻辑实现的。
 
 
-### 第三版：代理生成器
+### PEP 380：代理生成器
 
 > [PEP 380 - Syntax for Delegating to a Subgenerator](https://peps.python.org/pep-0380/)
 > yield from语句(2009-02-13)
@@ -384,3 +390,94 @@ class StopIteration(Exception):
         Exception.__init__(self, *args)
 ```
 
+### PEP 492：Python协程
+
+> [PEP 492 – Coroutines with async and await syntax](https://peps.python.org/pep-0492/)
+> python协程与async/await语句(2015-09-15)
+
+
+#### 历史背景与Python协程的诞生
+
+随着计算机技术的发展，互联网爆发式的应用增长，引发了响应式、易扩展的代码需求。
+协程正好在这样的场景下能够发挥巨大的威力。
+
+简单生成器（PEP 255）、增强版生成器（PEP 342）、代理生成器（PEP 380）
+为Python提供了可暂停及恢复的函数过程实现方式——生成器generator。
+若把视角放大些，正如本文一开始介绍并发时所说，协程实现系统并发的轻量级调度单元。
+而以协程实现系统并发任务的目标，仅有协程本身是不够的，还需要有相应的完善的调度系统支持。
+
+为了实现高效协程并发的开发模式， Python在借鉴了已基本成熟的generator的经验基础上，
+在“协程”的实现上向前迈出了关键的一步：
+
+1. 新增了`async/await`等关键字标识用以定义协程，并和传统generator模式区分
+2. 标准化的定义了Python协程调度的实现接口——事件循环（EventLoop）
+
+上述选择并非Python创新性的定义与实现，是Python综合考虑了许多协程实践经验所做的选择。
+这种选择无疑的奠基性、决定性的。由于代码开发模式一旦确定，后面将很难做出不兼容的调整改变。
+也如PEP 492作者所说：
+“我们相信，这里提出的更改将有助于保持 Python 在快速增长的异步编程领域的相关性和竞争力，
+正如许多其他语言已经采用或计划采用的那样。”
+
+#### 站在开发使用角度的动机
+
+从python语言的开发使用角度，使用generator作为Python协程的实现方案有以下不足：
+
+- 生成器(generator)与协程(coroutine)的代码定义易混淆
+- 是生成器(generator)还是普通函数(function)的区别是有函数体内语句`yield`/`yield from`所决定，很有可能造成微妙的不易察觉的错误代码。
+- `yield`/`yield from`表达式，在python仍有一些约束，比如不能用于`with`后`for`等语句。这也限制了协程的实现开发。
+
+
+#### 协程定义
+
+**协程(coroutine)**，由`async def`定义的函数就是协程（下文用Coro表示）。
+Coro的实现是基于generator语法的，但与传统generator对比, Coro有明显的不同:
+- Coro函数体中不能有`yield`/`yield from`语句
+- 传统generator初始化产生的对象类型是生成器Generator，Coro初始化产生的对象类型是新类型Coroutine
+- 传统generator具有`__iter__()`与`__next__()`特殊方法，Coro无此方法。
+- 传统generator不能`yield from`Coro对象，不过被下面协程包装器包装的generator则可以。
+- Coro不能抛出`StopIteration`，会被替换成`RuntimeError`异常。
+- 若Coro被gc时从未被await过，类比generator初始化后没有通过`send()`开始，会产生`RuntimeError`异常。
+
+```python
+async def read_data(db):
+    pass
+```
+
+提供对generator实现协程的包装器语法，作为历史协程方法向新语法的过度
+```python
+@types.coroutine
+def process_data(db):
+    data = yield from read_data(db)
+    ...
+```
+
+
+#### await表达式
+
+**`await`表达式**：只能在Coro中使用，在普通函数/生成器中使用是非法的，效果与`yield from`类似。
+不同点，`await`要求其等待的对象是 *可等待类型(Awaitable)* 对象，包括:
+- `async def`定义的Coro是可等待对象。
+- 由包装器`@types.coroutine`包装的传统生成器实现的协程。
+- 具有特殊方法`__await__()`的类型，且该返回对象的符合迭代器要求。
+
+
+#### async with/async for
+
+与`with`语句类似，`async with`提供异步实现的包装器语法。
+`with`语句等效调用类型的特殊方法`ctx.__enter__()`与`ctx.__exit__()`。
+与之相对`async with`语句等效调用类型的特殊方法`await ctx.__aenter__()`与`await ctx.__aexit__()`
+
+与`for`语句类似，`async for`提供了异步版本的实现。
+
+
+## 后记
+
+本文从计算机系统的起点开始，沿着并发、协程的线索，
+大体上完整回顾了Python语言Coroutine诞生的历史演化过程。
+
+不过，Coroutine不是关于Python协程实现的终点，
+如[历史背景与Python协程的诞生](#历史背景与python协程的诞生)章节所说，
+仅有协程本身是不够的，协程的并发运行需要相应完善的调度系统支持，
+即Python的事件循环——EventLoop。
+
+类似的，本文也只是异步/协程编程开发的起点。_Make every code character full of magic._   

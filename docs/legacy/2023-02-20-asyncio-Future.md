@@ -243,7 +243,9 @@ RESULT = _r
 
 目标:
 
-- 直接使用`yield from`调用生成器容易造成各种异常: 1) 目标函数是生成器, 但忘记用`yield from`调用. 2) 使用`yield from`调用的函数中没有`yield`语句
+- 直接使用`yield from`调用生成器容易造成各种异常: 
+- 1) 目标函数是生成器, 但忘记用`yield from`调用. 
+1) 2) 使用`yield from`调用的函数中没有`yield`语句
 
 PEP提案
 
