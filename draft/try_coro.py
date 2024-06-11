@@ -41,4 +41,15 @@ async def main():
     print(r)
 
 
-asyncio.run(main(), debug=True)
+def gen():
+    yield 1
+    yield 2
+    return
+
+def main():
+    g = gen()
+    print(next(g))
+    print(next(g))
+
+# asyncio.run(main(), debug=True)
+main()
