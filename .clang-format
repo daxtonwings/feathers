@@ -1,0 +1,115 @@
+# BasedOnStyle: Google
+BasedOnStyle: LLVM
+# Language: Cpp
+
+ColumnLimit: 0
+SortIncludes: Never
+
+IndentWidth: 4
+ContinuationIndentWidth: 4
+TabWidth: 4
+UseTab: Never   # Never, ForIndentation, ForContinuationAndIndentation, Always
+
+# 控制大括号的位置。常见值有
+#   Attach 不换行
+#   Linux 类与函数换行
+#   Mozilla 类、函数、命名空间换行
+#   Stroustrup 类函数换行，其它不变
+#   Allman 所有
+#   GNU 所有都换好，有额外缩进
+#   WebKit。
+BreakBeforeBraces: Mozilla
+#BreakBeforeBraces: Custom
+#BraceWrapping:
+#  AfterFunction: true      # 函数后 `{` 必须换行
+#  AfterClass: true        # 类的 `{` 必须换行
+#  AfterControlStatement: Never  # if/for/while 不换行
+#  AfterStruct: true       # struct 的 `{` 换行
+#  AfterEnum: true         # enum 的 `{` 换行
+#  BeforeLambdaBody: false # Lambda 的 `{` 保持原样
+Cpp11BracedListStyle: false
+
+BreakBeforeBinaryOperators: None
+
+PenaltyExcessCharacter: 100
+
+# 在控制结构和函数声明的括号前是否留空格。可以是 Never, ControlStatements, Always
+SpaceBeforeParens: ControlStatements
+# 在C风格类型转换后是否留空格
+SpaceAfterCStyleCast: true
+# 是否自动调整注释的格式
+ReflowComments: true
+# 控制注释换行的惩罚值
+PenaltyBreakComment: 300
+# 访问说明符(public、private等)的偏移
+AccessModifierOffset: -4
+# 如果为true，将在If/for/switch/while条件括号前后插入空格。
+SpacesInConditionalStatement: true
+## 允许构造函数的初始化参数放在下一行
+#AllowAllConstructorInitializersOnNextLine: true
+# 在构造函数的初始化列表的逗号前换行
+BreakConstructorInitializersBeforeComma: true
+
+
+# ------------------------------------------------------------------------------
+# https://github.com/llvm/llvm-project/blob/main/libcxx/.clang-format
+# ------------------------------------------------------------------------------
+# 左括号(左圆括号、左尖括号、左方括号)后的对齐: Align, DontAlign, AlwaysBreak(总是在左括号后换行)
+AlignAfterOpenBracket: BlockIndent
+# 是否对齐连续的赋值语句
+AlignConsecutiveAssignments: Consecutive
+# 对齐连续位域字段的风格
+AlignConsecutiveBitFields: Consecutive
+# 是否对齐连续的声明语句
+#AlignConsecutiveDeclarations: true
+# 用于在使用反斜杠换行中对齐反斜杠的选项
+AlignEscapedNewlines: Right
+# 水平对齐二元和三元表达式的操作数
+AlignOperands: AlignAfterOperator
+# 对齐连续的尾随的注释
+AlignTrailingComments: true
+# 如果函数调用或带括号的初始化列表不适合全部在一行时
+# 允许将所有参数放到下一行，即使BinPackArguments为false
+AllowAllArgumentsOnNextLine: true
+## 允许函数声明的所有参数在放在下一行
+AllowAllParametersOfDeclarationOnNextLine: true
+# 是否允许短函数写在一行，允许lambda可以
+AllowShortFunctionsOnASingleLine: InlineOnly
+#AllowShortIfStatementsOnASingleLine: false
+#
+AllowShortLambdasOnASingleLine: All
+# 总是在template声明后换行
+AlwaysBreakTemplateDeclarations: true
+# false表示函数实参要么都在同一行，要么都各自一行
+BinPackArguments: false
+# false表示所有形参要么都在同一行，要么都各自一行
+BinPackParameters: false
+#
+BreakBeforeConceptDeclarations: true
+#
+BreakInheritanceList: BeforeColon
+#
+EmptyLineAfterAccessModifier: Never
+#
+EmptyLineBeforeAccessModifier: Always
+# 函数返回类型换行时，缩进函数声明或函数定义的函数名
+IndentWrappedFunctionNames: false
+#
+IndentRequires: true
+#
+InsertTrailingCommas: Wrapped
+# 保留在块开始处的空行
+KeepEmptyLinesAtTheStartOfBlocks: false
+# 连续空行的最大数量
+MaxEmptyLinesToKeep: 2
+#
+PackConstructorInitializers: NextLine
+#
+PenaltyIndentedWhitespace: 2
+#
+# 指针和引用的对齐: Left, Right, Middle
+PointerAlignment: Left
+#
+Standard: c++20
+# 在尖括号的<后和>前添加空格
+SpacesInAngles: Leave
